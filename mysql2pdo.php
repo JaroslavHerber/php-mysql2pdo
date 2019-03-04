@@ -8,11 +8,11 @@ class jhDb {
 	private static $_oInstance = null;
 
 	private static $_aCachedDbs = array();
-	private static $_sLastError = false;
+	private static $_oLastException = false;
 
 	private static $_sHost = 'localhost';
-	private static $_sUser = 'user';
-	private static $_sPass = 'password';
+	private static $_sUser = 'user';	// default-user
+	private static $_sPass = 'password';	// default-password
 	private static $_sCharset = 'utf8';
 
 
@@ -42,11 +42,11 @@ class jhDb {
 	}
 
 
-	public static function setConnection( $sHost, $sUser, $sPassword ) {
+	public static function setConnection( $sHost, $sUser, $sPass ) {
 
 		self::$_sHost = $sHost;
 		self::$_sUser = $sUser;
-		self::$_sPass = $sPassword;
+		self::$_sPass = $sPass;
 
 	}
 
@@ -60,7 +60,7 @@ class jhDb {
 
 		} catch( PDOException $oEx ) {
 
-			self::$_sLastError = 'Could not create database-object<br>Error code: ' . $oEx->getCode();
+			self::setLastException($oEx);
 
 		}
 
@@ -69,8 +69,13 @@ class jhDb {
 	}
 
 
-	public static function getLastError() {
-		return self::$_sLastError;
+	public static function setLastException( $sError ) {
+		self::$_oLastException = $sError;
+	}
+
+
+	public static function getLastException() {
+		return self::$_oLastException;
 	}
 
 
@@ -91,8 +96,8 @@ if( PHP_MAJOR_VERSION >= 7 ) {
 		return $sUser;
 	}
 
-	function mysql_select_db( $sDbName, $oConnection ) {
-		$GLOBALS['mysql_connections'][$sDbName] = jhDb::getDb($sDbName);
+	function mysql_select_db( $sDbName, $sUser ) {
+		$GLOBALS['mysql_connections'][$sUser] = jhDb::getDb($sDbName);
 		return true;
 	}
 
@@ -100,12 +105,12 @@ if( PHP_MAJOR_VERSION >= 7 ) {
 		return str_replace(array('\\', "\0", "\n", "\r", "'", '"', "\x1a"), array('\\\\', '\\0', '\\n', '\\r', "\\'", '\\"', '\\Z'), $sString);
 	}
 
-	function mysql_query( $sQuery, $sDb = false ) {
+	function mysql_query( $sQuery, $sUser = false ) {
 
 		$oDb = false;
 
-		if( $sDb && isset($GLOBALS['mysql_connections'][$sDb]) ) {
-			$oDb = $GLOBALS['mysql_connections'][$sDb];
+		if( $sUser && isset($GLOBALS['mysql_connections'][$sUser]) ) {
+			$oDb = $GLOBALS['mysql_connections'][$sUser];
 		} elseif( count($GLOBALS['mysql_connections']) ) {
 			$oDb = end($GLOBALS['mysql_connections']);
 		}
@@ -118,10 +123,33 @@ if( PHP_MAJOR_VERSION >= 7 ) {
 		try {
 			$rRes = $oDb->query($sQuery);
 		} catch( PDOException $oEx ) {
-			debug($oEx->getMessage());
+			jhDb::setLastException($oEx);
 		}
 
 		return $rRes;
+
+	}
+
+	function mysql_result( &$rRes, $iRow, $mField = 0 ) {
+
+		$iCountRow = 0;
+
+		$sFetchType = PDO::FETCH_NUM;
+		if( !is_numeric($mField) ) {
+			$sFetchType = PDO::FETCH_ASSOC;
+		}
+
+		while( $aRow = $rRes->fetch($sFetchType) ) {
+
+			if( $iRow === $iCountRow && isset($aRow[$mField]) ) {
+				return $aRow[$mField];
+			}
+
+			$iCountRow++;
+
+		}
+
+		return false;
 
 	}
 
@@ -162,7 +190,7 @@ if( PHP_MAJOR_VERSION >= 7 ) {
 	function mysql_set_charset( $sCharSet, $oConnection ) {
 
 		if( $sCharSet !== 'utf8' ) {
-			debug('Only utf8 is allowed');
+			debug('Only utf8 is supported');
 			return false;
 		}
 
@@ -171,13 +199,32 @@ if( PHP_MAJOR_VERSION >= 7 ) {
 	}
 
 	function mysql_error( $rRes ) {
-		// TODO: catch and return PDO-errors
-		//return $rRes->errorInfo();
+
+		if( $oException = jhDb::getLastException() ) {
+			return $oException->getMessage();
+		}
 
 		return false;
+
+	}
+
+	function mysql_errno( $rRes ) {
+
+		if( $oException = jhDb::getLastException() ) {
+			return $oException->getCode();
+		}
+
+		return 0;
+
 	}
 
 	function mysql_free_result( $rRes ) {
+		// No need to delete RAM in year 2019
+		return true;
+	}
+
+	function mysql_close( $rRes ) {
+		// No need for closing connection
 		return true;
 	}
 
