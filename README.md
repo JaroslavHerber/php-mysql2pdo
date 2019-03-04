@@ -13,9 +13,9 @@ Just include this file at the beginning of your php-file, which uses the old mys
 require_once '/www/php5-compatibility/mysql2pdo.php';
 ```
 
-If you want, you can use same DB-connections with real PDO
+If you want, you can use same DB-connections with real PDO-functions:
 ```
-require_once '/www/tools/mysql2pdo.php';
+require_once '/www/php5-compatibility/mysql2pdo.php';
 
 $mysql_connect = mysql_connect('localhost','my_user','my_password');
 mysql_select_db('my_db', $mysql_connect);
@@ -32,7 +32,7 @@ $rPrepare = jhDb::getDb('my_db')->prepare('SELECT * FROM `my_table` WHERE `uid` 
 $rPrepare->execute(array(1));
 
 while( $aRow = $rPrepare->fetch(PDO::FETCH_ASSOC) ) {
-  print_r($aRow); // This should return same array as above
+  print_r($aRow); // This should return same array as above mysql_fetch_assoc()
 }
 ```
 
