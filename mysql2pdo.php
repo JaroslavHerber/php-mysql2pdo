@@ -5,9 +5,10 @@
 */
 class jhDb {
 
-	private static $_instance = null;
+	private static $_oInstance = null;
 
 	private static $_aCachedDbs = array();
+	private static $_sLastError = false;
 
 	private static $_sHost = 'localhost';
 	private static $_sUser = 'user';
@@ -16,15 +17,17 @@ class jhDb {
 
 
 	public static function getInstance() {
-		if(!self::$_instance instanceof jhDb) {
-			self::$_instance = new jhDb();
+
+		if( !self::$_oInstance instanceof jhDb ) {
+			self::$_oInstance = new jhDb();
 		}
 
-		return self::$_instance;
+		return self::$_oInstance;
+
 	}
 
 
-	public static function getDb( $sDbName = 'stats' ) {
+	public static function getDb( $sDbName ) {
 
 		if( $sDbName ) {
 
@@ -39,6 +42,15 @@ class jhDb {
 	}
 
 
+	public static function setConnection( $sHost, $sUser, $sPassword ) {
+
+		self::$_sHost = $sHost;
+		self::$_sUser = $sUser;
+		self::$_sPass = $sPassword;
+
+	}
+
+
 	protected static function createConnection( $sDbName ) {
 
 		try {
@@ -46,10 +58,9 @@ class jhDb {
 			$aOptions = array(PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_OBJ, PDO::ATTR_ERRMODE => PDO::ERRMODE_WARNING, PDO::MYSQL_ATTR_USE_BUFFERED_QUERY => true);
 			return new PDO('mysql:host='.self::$_sHost.';dbname='.$sDbName.';charset='.self::$_sCharset, self::$_sUser, self::$_sPass, $aOptions);
 
-		} catch(PDOException $e) {
+		} catch( PDOException $oEx ) {
 
-			debug('Could not create database-object<br>Error code: '.$e->getCode());
-			die();
+			self::$_sLastError = 'Could not create database-object<br>Error code: ' . $oEx->getCode();
 
 		}
 
@@ -57,39 +68,46 @@ class jhDb {
 
 	}
 
+
+	public static function getLastError() {
+		return self::$_sLastError;
+	}
+
+
 }
 
 
 if( PHP_MAJOR_VERSION >= 7 ) {
 
-	$GLOBALS['mysql_connection'] = array();
+	$GLOBALS['mysql_connections'] = array();
 
 	define('MYSQL_BOTH', PDO::FETCH_BOTH);
 	define('MYSQL_NUM', PDO::FETCH_NUM);
 	define('MYSQL_ASSOC', PDO::FETCH_ASSOC);
 
-	function mysql_connect( $sHost, $sDatabase, $sPassword ) {
-		// TODO: add setter in jhDb
-		return $sDatabase;
+
+	function mysql_connect( $sHost, $sUser, $sPassword ) {
+		jhDb::setConnection($sHost, $sUser, $sPassword);
+		return $sUser;
 	}
 
 	function mysql_select_db( $sDbName, $oConnection ) {
-		$GLOBALS['mysql_connection'][$sDbName] = jhDb::getDb($sDbName);
+		$GLOBALS['mysql_connections'][$sDbName] = jhDb::getDb($sDbName);
 		return true;
 	}
 
-	function mysql_real_escape_string( $sSting ) {
-		return str_replace(array('\\', "\0", "\n", "\r", "'", '"', "\x1a"), array('\\\\', '\\0', '\\n', '\\r', "\\'", '\\"', '\\Z'), $sSting);
+	function mysql_real_escape_string( $sString ) {
+		return str_replace(array('\\', "\0", "\n", "\r", "'", '"', "\x1a"), array('\\\\', '\\0', '\\n', '\\r', "\\'", '\\"', '\\Z'), $sString);
 	}
 
 	function mysql_query( $sQuery, $sDb = false ) {
 
 		$oDb = false;
 
-		if( $sDb && isset($GLOBALS['mysql_connection'][$sDb]) ) {
-			$oDb = $GLOBALS['mysql_connection'][$sDb];
-		} elseif( count($GLOBALS['mysql_connection']) ) {
-			$oDb = end($GLOBALS['mysql_connection']);
+		if( $sDb && isset($GLOBALS['mysql_connections'][$sDb]) ) {
+			$oDb = $GLOBALS['mysql_connections'][$sDb];
+		} elseif( count($GLOBALS['mysql_connections']) ) {
+			$oDb = end($GLOBALS['mysql_connections']);
 		}
 
 		if( !$oDb ) {
@@ -142,16 +160,19 @@ if( PHP_MAJOR_VERSION >= 7 ) {
 	}
 
 	function mysql_set_charset( $sCharSet, $oConnection ) {
+
 		if( $sCharSet !== 'utf8' ) {
 			debug('Only utf8 is allowed');
-      return false;
+			return false;
 		}
+
 		return true;
+
 	}
 
 	function mysql_error( $rRes ) {
 		// TODO: catch and return PDO-errors
-    //return $rRes->errorInfo();
+		//return $rRes->errorInfo();
 
 		return false;
 	}
@@ -165,7 +186,7 @@ if( PHP_MAJOR_VERSION >= 7 ) {
 
 if( !function_exists('debug') ) {
 	function debug( $mVar, $sLogFile = '/tmp/debug.log' ) {
-		
+
 		$rLogFile = fopen($sLogFile, 'a');
 		$sString = var_export($mVar, true);
 
@@ -178,7 +199,7 @@ if( !function_exists('debug') ) {
 
 		fputs($rLogFile, "\n---- " . date('Y-m-d H:i:s') . ' / ' . $sExecutionFile . " ----\n" . $sString . "\n");
 		fclose($rLogFile);
-		
+
 	}
 }
 
